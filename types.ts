@@ -29,6 +29,10 @@ export interface CopyToTeamsSettings {
 
 	// Tables
 	tableStyle: 'simple-grid' | 'unicode-box';
+
+	// Templates
+	headerTemplate: string;
+	footerTemplate: string;
 }
 
 /**
@@ -45,6 +49,8 @@ export const DEFAULT_SETTINGS: CopyToTeamsSettings = {
 	showWikilinkUrls: false,
 	externalLinkFormat: 'text-url',
 	tableStyle: 'simple-grid',
+	headerTemplate: '',
+	footerTemplate: '',
 };
 
 /**

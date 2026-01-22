@@ -58,6 +58,17 @@ function processNode(node: Content, context: TransformContext, depth: number): T
 		case 'code':
 			return processCodeBlock(node, context);
 		case 'blockquote':
+			// check for callouts
+			if (node.children.length > 0 && node.children[0].type === 'paragraph') {
+				const firstChild = node.children[0];
+				if (firstChild.children && firstChild.children.length > 0 && firstChild.children[0].type === 'text') {
+					const text = firstChild.children[0].value;
+					const match = text.match(/^\[!(\w+)\](?: (.*))?$/);
+					if (match) {
+						return processCallout(node, context, match[1], match[2]);
+					}
+				}
+			}
 			return processBlockquote(node, context);
 		case 'thematicBreak':
 			return { html: '<hr />\n', plainText: '---\n' };
@@ -141,7 +152,11 @@ function processList(node: any, context: TransformContext, depth: number): Trans
 
 		// Add numbering for ordered lists
 		if (node.ordered) {
-			const numberedHtml = itemResult.html.replace(/^<p>/, `<p>${index}. `);
+			let numberedHtml = itemResult.html;
+			// Only add numbering if it starts with a paragraph
+			if (numberedHtml.startsWith('<p>')) {
+				numberedHtml = numberedHtml.replace(/^<p>/, `<p>${index}. `);
+			}
 			const numberedPlain = itemResult.plainText.replace(/^(\s*)/, `$1${index}. `);
 			htmlParts.push(numberedHtml);
 			plainParts.push(numberedPlain);
@@ -173,6 +188,36 @@ function processListItem(node: any, context: TransformContext, depth: number): T
 			? context.settings.checkboxChecked
 			: context.settings.checkboxUnchecked;
 		checkboxPrefix = emoji + ' ';
+	} else if (node.type === 'listItem' && node.children && node.children.length > 0) {
+		// Advanced task states logic for manual checking if remark doesn't parse custom states
+		// Often these are parsed as just text starting with [?]
+		const firstPara = node.children[0];
+		if (firstPara.type === 'paragraph' && firstPara.children.length > 0 && firstPara.children[0].type === 'text') {
+			const text = firstPara.children[0].value;
+			const match = text.match(/^\[([->?!*IQS])\]\s/);
+			if (match) {
+				const symbol = match[1];
+				let emoji = '';
+				switch(symbol) {
+					case '-': emoji = '⛔'; break; // Cancelled
+					case '>': emoji = '⏭️'; break; // Rescheduled
+					case '?': emoji = '❓'; break; // Question
+					case '!': emoji = '❗'; break; // Important
+					case '*': emoji = '⭐'; break; // Star
+					case 'I': emoji = 'ℹ️'; break; // Info
+					case 'Q': emoji = '💬'; break; // Quote
+					case 'S': emoji = '💰'; break; // Savings/Amount
+				}
+				if (emoji) {
+					checkboxPrefix = emoji + ' ';
+					// Remove the marker from the text content to avoid duplication
+					// Note: This is a bit tricky since we're modifying the AST or output downstream
+					// For now, we'll just set the prefix. The text content will still have [?] unless we slice it.
+					// A proper fix involves mutating the AST node text value.
+					firstPara.children[0].value = text.substring(match[0].length);
+				}
+			}
+		}
 	}
 
 	// Process children
@@ -225,18 +270,38 @@ function processTable(node: any, context: TransformContext): TransformResult {
 		}
 	}
 
-	// Build simple grid table
+	// Build table based on style
 	const lines: string[] = [];
 
-	for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-		const row = rows[rowIdx];
-		const paddedCells = row.map((cell, i) => cell.padEnd(colWidths[i], ' '));
-		lines.push('| ' + paddedCells.join(' | ') + ' |');
+	if (context.settings.tableStyle === 'unicode-box') {
+		const topBorder = '┌' + colWidths.map(w => '─'.repeat(w + 2)).join('┬') + '┐';
+		const midBorder = '├' + colWidths.map(w => '─'.repeat(w + 2)).join('┼') + '┤';
+		const botBorder = '└' + colWidths.map(w => '─'.repeat(w + 2)).join('┴') + '┘';
 
-		// Add separator after header row
-		if (rowIdx === 0) {
-			const separators = colWidths.map(w => '-'.repeat(w));
-			lines.push('|' + separators.map(s => '-' + s + '-').join('|') + '|');
+		lines.push(topBorder);
+		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+			const row = rows[rowIdx];
+			const paddedCells = row.map((cell, i) => cell.padEnd(colWidths[i], ' '));
+			lines.push('│ ' + paddedCells.join(' │ ') + ' │');
+
+			// Add separator after header row
+			if (rowIdx === 0 && rows.length > 1) {
+				lines.push(midBorder);
+			}
+		}
+		lines.push(botBorder);
+	} else {
+		// Simple grid
+		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+			const row = rows[rowIdx];
+			const paddedCells = row.map((cell, i) => cell.padEnd(colWidths[i], ' '));
+			lines.push('| ' + paddedCells.join(' | ') + ' |');
+
+			// Add separator after header row
+			if (rowIdx === 0) {
+				const separators = colWidths.map(w => '-'.repeat(w));
+				lines.push('|' + separators.map(s => '-' + s + '-').join('|') + '|');
+			}
 		}
 	}
 
@@ -258,6 +323,153 @@ function processCodeBlock(node: any, context: TransformContext): TransformResult
 	// Teams doesn't support syntax highlighting, so we just use plain code block
 	const html = `<pre>${escapeHtml(code)}</pre>\n`;
 	const plainText = '```\n' + code + '\n```\n';
+
+	return { html, plainText };
+}
+
+/**
+ * Process Obsidian callouts/admonitions
+ */
+function processCallout(node: any, context: TransformContext, type: string, title?: string): TransformResult {
+	const typeLower = type.toLowerCase();
+	let color = '#4488ff'; // Default info blue
+	let icon = 'ℹ️';
+
+	switch (typeLower) {
+		case 'note':
+		case 'info':
+			color = '#4488ff';
+			icon = 'ℹ️';
+			break;
+		case 'tip':
+		case 'hint':
+		case 'important':
+			color = '#00bfbc';
+			icon = '🔥';
+			break;
+		case 'success':
+		case 'check':
+		case 'done':
+			color = '#19be6b';
+			icon = '✅';
+			break;
+		case 'question':
+		case 'help':
+		case 'faq':
+			color = '#ec7500';
+			icon = '❓';
+			break;
+		case 'warning':
+		case 'caution':
+		case 'attention':
+			color = '#e0ac00';
+			icon = '⚠️';
+			break;
+		case 'failure':
+		case 'fail':
+		case 'missing':
+			color = '#e93147';
+			icon = '❌';
+			break;
+		case 'danger':
+		case 'error':
+		case 'bug':
+			color = '#e93147';
+			icon = '⚡';
+			break;
+		case 'example':
+			color = '#7a43b6';
+			icon = '🟣';
+			break;
+		case 'quote':
+		case 'cite':
+			color = '#9e9e9e';
+			icon = '💬';
+			break;
+	}
+
+	const displayTitle = title || type.charAt(0).toUpperCase() + type.slice(1);
+	
+	// Process content
+	// Skip the first line of the first paragraph if it contains the callout marker
+	const contentNodes = [...node.children];
+	if (contentNodes.length > 0 && contentNodes[0].type === 'paragraph') {
+		const firstPara = contentNodes[0];
+		if (firstPara.children && firstPara.children.length > 0 && firstPara.children[0].type === 'text') {
+			// Determine if title was part of the marker line or separate
+			// The regex matched earlier so we know it fits [!type] title
+			// We need to clean up the first node text to remove the marker
+			// But since we are creating a styled box, we might just want to process the rest of the children
+			
+			// Actually, typical Obsidian callout structure in MDAST puts the content AFTER the [!type] line if it's a blockquote
+			// But remark-gfm parsing of blockquotes treats [!type] as just text in the first paragraph.
+			
+			// Let's create a temporary node list for content excluding the marker text
+			const newChildren = [...firstPara.children];
+			const firstTextNode = newChildren[0];
+			const firstText = firstTextNode.value;
+			const match = firstText.match(/^\[!(\w+)\](?: (.*))?$/);
+			
+			if (match) {
+				// If the paragraph only contained the marker, remove it entirely
+				if (newChildren.length === 1 && firstText === match[0]) {
+					contentNodes.shift();
+				} else {
+					// Otherwise strip the marker from the text
+					// This is complex because of potential newlines.
+					// Simple approach: remove the first paragraph entirely if it's just the header
+					// If the header has content after it on the same line, that's rare for callouts but possible.
+					// Standard callout:
+					// > [!info] Title
+					// > Content
+					// The text node value will be "[!info] Title\nContent" or similar depending on parser
+					
+					// Let's just strip the marker line from the start of the text value
+					const lines = firstText.split('\n');
+					lines.shift(); // Remove marker line
+					const remainingText = lines.join('\n');
+					
+					if (remainingText.trim()) {
+						firstTextNode.value = remainingText;
+					} else {
+						// Check if there are other siblings in this paragraph
+						if (newChildren.length === 1) {
+							contentNodes.shift();
+						} else {
+							newChildren.shift();
+							firstPara.children = newChildren;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	const htmlParts: string[] = [];
+	const plainParts: string[] = [];
+
+	for (const child of contentNodes) {
+		const result = processNode(child, context, 0);
+		htmlParts.push(result.html);
+		plainParts.push(result.plainText);
+	}
+
+	const contentHtml = htmlParts.join('');
+	const contentPlain = plainParts.join('');
+
+	// Teams supports basic tables well, so we use a single-cell table with border color
+	const html = `
+<table style="border-left: 3px solid ${color}; background-color: #f5f5f5; width: 100%;">
+	<tr>
+		<td style="padding: 10px;">
+			<p><strong>${icon} ${escapeHtml(displayTitle)}</strong></p>
+			${contentHtml}
+		</td>
+	</tr>
+</table>
+`;
+
+	const plainText = `> [!${type}] ${displayTitle}\n${contentPlain}`;
 
 	return { html, plainText };
 }
@@ -346,8 +558,9 @@ function processPhrasingNode(node: PhrasingContent, context: TransformContext): 
 			const url = node.url || '';
 
 			if (context.settings.externalLinkFormat === 'hyperlink') {
+				const encodedUrl = escapeHtml(encodeURI(url));
 				return {
-					html: `<a href="${escapeHtml(url)}">${linkContent.html}</a>`,
+					html: `<a href="${encodedUrl}">${linkContent.html}</a>`,
 					plainText: `${linkContent.plainText}`,
 				};
 			} else if (context.settings.externalLinkFormat === 'text-url') {

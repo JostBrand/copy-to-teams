@@ -1,4 +1,4 @@
-import esbuild from "esbuild";
+import esbuild from "esbuild-wasm";
 import process from "process";
 import builtins from "builtin-modules";
 
@@ -33,7 +33,7 @@ const context = await esbuild.context({
 		'@lezer/lr',
 		...builtins],
 	format: 'cjs',
-	target: 'es2022',
+	target: 'es2020',
 	logLevel: "info",
 	sourcemap: prod ? false : 'inline',
 	treeShaking: true,

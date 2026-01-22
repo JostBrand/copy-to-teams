@@ -139,6 +139,32 @@ export class CopyToTeamsSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		// Templates section
+		containerEl.createEl('h3', { text: 'Templates' });
+		containerEl.createEl('p', { text: 'Available variables: {{title}} (note title), {{date}} (current date), {{url}} (obsidian url)', cls: 'setting-item-description' });
+
+		new Setting(containerEl)
+			.setName('Header template')
+			.setDesc('Text to add at the beginning of the copied content')
+			.addTextArea(text => text
+				.setPlaceholder('e.g. Copied from {{title}}')
+				.setValue(this.plugin.settings.headerTemplate)
+				.onChange(async (value) => {
+					this.plugin.settings.headerTemplate = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Footer template')
+			.setDesc('Text to add at the end of the copied content')
+			.addTextArea(text => text
+				.setPlaceholder('e.g. Generated on {{date}}')
+				.setValue(this.plugin.settings.footerTemplate)
+				.onChange(async (value) => {
+					this.plugin.settings.footerTemplate = value;
+					await this.plugin.saveSettings();
+				}));
+
 		// UI section
 		containerEl.createEl('h3', { text: 'User Interface' });
 
