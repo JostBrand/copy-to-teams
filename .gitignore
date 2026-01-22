@@ -1,0 +1,18 @@
+# npm
+node_modules/
+package-lock.json
+
+# build
+main.js
+main.js.map
+*.js.map
+
+# editor
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
+
+# misc
+.env
