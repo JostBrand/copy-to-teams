@@ -3,8 +3,21 @@
  */
 
 import type { Root, Content, PhrasingContent, TableRow, TableCell } from 'mdast';
-import { visit } from 'unist-util-visit';
-import type { TransformContext, TransformResult, HeadingState } from './types';
+import type { TransformContext, TransformResult, HeadingState, ImageData } from './types';
+
+// Constants for formatting
+const INDENT_SIZE = 3; // Spaces per indentation level
+const TABLE_CELL_PADDING = 2; // Padding added to each table cell
+
+// Font sizes for proportional headings (H1 = largest, H6 = smallest)
+const HEADING_FONT_SIZES: Record<number, string> = {
+	1: '24px',
+	2: '20px',
+	3: '16px',
+	4: '14px',
+	5: '13px',
+	6: '12px',
+};
 
 /**
  * Transform a Markdown AST to Teams-compatible HTML and plain text
@@ -63,7 +76,7 @@ function processNode(node: Content, context: TransformContext, depth: number): T
 				const firstChild = node.children[0];
 				if (firstChild.children && firstChild.children.length > 0 && firstChild.children[0].type === 'text') {
 					const text = firstChild.children[0].value;
-					const match = text.match(/^\[!(\w+)\](?: (.*))?$/);
+					const match = text.match(/^\[!(\w+)\](?: ([^\n]*))?/);
 					if (match) {
 						return processCallout(node, context, match[1], match[2]);
 					}
@@ -78,11 +91,12 @@ function processNode(node: Content, context: TransformContext, depth: number): T
 }
 
 /**
- * Process heading nodes with hierarchical numbering
+ * Process heading nodes with hierarchical numbering and proportional sizing
  */
 function processHeading(node: any, context: TransformContext): TransformResult {
 	const level = node.depth;
 	const text = processPhrasingContent(node.children, context);
+	const fontSize = HEADING_FONT_SIZES[level] || '12px';
 
 	let prefix = '';
 	if (context.settings.headingStyle === 'numbered') {
@@ -95,12 +109,12 @@ function processHeading(node: any, context: TransformContext): TransformResult {
 	let plainText = '';
 
 	if (context.settings.headingStyle === 'numbered' || context.settings.headingStyle === 'bold') {
-		html = `<p><b>${escapeHtml(headingText)}</b></p>\n`;
-		plainText = `${headingText}\n`;
+		html = `<p style="font-size: ${fontSize};"><b>${escapeHtml(headingText)}</b></p>\n`;
+		plainText = `${'#'.repeat(level)} ${text.plainText}\n`;
 	} else {
 		// uppercase
-		html = `<p>${escapeHtml(headingText.toUpperCase())}</p>\n`;
-		plainText = `${headingText.toUpperCase()}\n`;
+		html = `<p style="font-size: ${fontSize};">${escapeHtml(headingText.toUpperCase())}</p>\n`;
+		plainText = `${'#'.repeat(level)} ${text.plainText.toUpperCase()}\n`;
 	}
 
 	return { html, plainText };
@@ -177,7 +191,7 @@ function processList(node: any, context: TransformContext, depth: number): Trans
  * Process list item nodes
  */
 function processListItem(node: any, context: TransformContext, depth: number): TransformResult {
-	const indent = '   '.repeat(depth); // 3 spaces per level
+	const indent = ' '.repeat(INDENT_SIZE * depth);
 	const htmlParts: string[] = [];
 	const plainParts: string[] = [];
 
@@ -274,9 +288,9 @@ function processTable(node: any, context: TransformContext): TransformResult {
 	const lines: string[] = [];
 
 	if (context.settings.tableStyle === 'unicode-box') {
-		const topBorder = '┌' + colWidths.map(w => '─'.repeat(w + 2)).join('┬') + '┐';
-		const midBorder = '├' + colWidths.map(w => '─'.repeat(w + 2)).join('┼') + '┤';
-		const botBorder = '└' + colWidths.map(w => '─'.repeat(w + 2)).join('┴') + '┘';
+		const topBorder = '┌' + colWidths.map(w => '─'.repeat(w + TABLE_CELL_PADDING)).join('┬') + '┐';
+		const midBorder = '├' + colWidths.map(w => '─'.repeat(w + TABLE_CELL_PADDING)).join('┼') + '┤';
+		const botBorder = '└' + colWidths.map(w => '─'.repeat(w + TABLE_CELL_PADDING)).join('┴') + '┘';
 
 		lines.push(topBorder);
 		for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
@@ -576,6 +590,9 @@ function processPhrasingNode(node: PhrasingContent, context: TransformContext): 
 				};
 			}
 
+		case 'image':
+			return processImage(node, context);
+
 		case 'break':
 			return { html: '<br />', plainText: '\n' };
 
@@ -589,6 +606,40 @@ function processPhrasingNode(node: PhrasingContent, context: TransformContext): 
 			}
 			return { html: '', plainText: '' };
 	}
+}
+
+/**
+ * Process image nodes
+ */
+function processImage(node: any, context: TransformContext): TransformResult {
+	const url = node.url || '';
+	const alt = node.alt || 'Image';
+
+	// Check if this is a placeholder for an embedded image
+	if (url.startsWith('__IMG_') && url.endsWith('__')) {
+		const imageData = context.images.get(url);
+		if (imageData) {
+			const dataUrl = `data:${imageData.mimeType};base64,${imageData.base64}`;
+			return {
+				html: `<img src="${dataUrl}" alt="${escapeHtml(imageData.altText)}" style="max-width: 100%;" />`,
+				plainText: `[Image: ${imageData.altText}]`,
+			};
+		}
+	}
+
+	// External image URL - embed directly
+	if (url.startsWith('http://') || url.startsWith('https://')) {
+		return {
+			html: `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" style="max-width: 100%;" />`,
+			plainText: `[Image: ${alt}]`,
+		};
+	}
+
+	// Fallback for unresolved images
+	return {
+		html: `<span>[Image: ${escapeHtml(alt)}]</span>`,
+		plainText: `[Image: ${alt}]`,
+	};
 }
 
 /**

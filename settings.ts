@@ -4,6 +4,7 @@
 
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import type CopyToTeamsPlugin from './main';
+import type { CopyToTeamsSettings } from './types';
 
 export class CopyToTeamsSettingTab extends PluginSettingTab {
 	plugin: CopyToTeamsPlugin;
@@ -93,8 +94,8 @@ export class CopyToTeamsSettingTab extends PluginSettingTab {
 				.addOption('bold', 'Bold')
 				.addOption('uppercase', 'Uppercase')
 				.setValue(this.plugin.settings.headingStyle)
-				.onChange(async (value: any) => {
-					this.plugin.settings.headingStyle = value;
+				.onChange(async (value: string) => {
+					this.plugin.settings.headingStyle = value as CopyToTeamsSettings['headingStyle'];
 					await this.plugin.saveSettings();
 				}));
 
@@ -119,8 +120,8 @@ export class CopyToTeamsSettingTab extends PluginSettingTab {
 				.addOption('text-url', 'Text (URL)')
 				.addOption('hyperlink', 'Hyperlink')
 				.setValue(this.plugin.settings.externalLinkFormat)
-				.onChange(async (value: any) => {
-					this.plugin.settings.externalLinkFormat = value;
+				.onChange(async (value: string) => {
+					this.plugin.settings.externalLinkFormat = value as CopyToTeamsSettings['externalLinkFormat'];
 					await this.plugin.saveSettings();
 				}));
 
@@ -134,8 +135,8 @@ export class CopyToTeamsSettingTab extends PluginSettingTab {
 				.addOption('simple-grid', 'Simple grid (|---|)')
 				.addOption('unicode-box', 'Unicode box (┌─┐)')
 				.setValue(this.plugin.settings.tableStyle)
-				.onChange(async (value: any) => {
-					this.plugin.settings.tableStyle = value;
+				.onChange(async (value: string) => {
+					this.plugin.settings.tableStyle = value as CopyToTeamsSettings['tableStyle'];
 					await this.plugin.saveSettings();
 				}));
 

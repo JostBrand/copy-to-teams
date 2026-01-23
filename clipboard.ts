@@ -23,12 +23,16 @@ export async function copyToClipboard(result: TransformResult): Promise<void> {
 
 		// Write to clipboard
 		await navigator.clipboard.write([clipboardItem]);
-	} catch (error) {
+	} catch (htmlError) {
 		// Fallback: try plain text only if HTML clipboard fails
 		try {
 			await navigator.clipboard.writeText(result.plainText);
-		} catch (fallbackError) {
-			throw new Error('Failed to copy to clipboard: ' + (error as Error).message);
+		} catch (plainTextError) {
+			// Both methods failed - report the plain text error as it's the more fundamental failure
+			throw new Error(
+				`Clipboard write failed. HTML error: ${(htmlError as Error).message}. ` +
+				`Plain text fallback error: ${(plainTextError as Error).message}`
+			);
 		}
 	}
 }

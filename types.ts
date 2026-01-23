@@ -61,11 +61,21 @@ export interface HeadingState {
 }
 
 /**
+ * Image data for embedding
+ */
+export interface ImageData {
+	base64: string;
+	mimeType: string;
+	altText: string;
+}
+
+/**
  * Transformation context passed through the AST visitor
  */
 export interface TransformContext {
 	settings: CopyToTeamsSettings;
 	headingState: HeadingState;
+	images: Map<string, ImageData>;
 }
 
 /**
