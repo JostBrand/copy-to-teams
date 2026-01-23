@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build plugin
+        run: npm run build
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          files: |
+            main.js
+            manifest.json
+          body: |
+            ## Installation
+
+            1. Download `main.js` and `manifest.json` from the assets below
+            2. Create a folder named `copy-to-teams` in your Obsidian vault's `.obsidian/plugins/` directory
+            3. Copy both files into that folder
+            4. Reload Obsidian
+            5. Enable the plugin in Settings → Community plugins
+
+            ## Changes in this version
+
+            See the [commit history](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) for details.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
