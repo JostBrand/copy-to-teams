@@ -16,15 +16,14 @@
   ],
   "author": "Jost Brand",
   "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^20.10.0",
-    "builtin-modules": "^3.3.0",
-    "esbuild": "^0.19.9",
-    "esbuild-wasm": "^0.27.2",
-    "obsidian": "latest",
-    "tslib": "^2.6.2",
-    "typescript": "^5.3.3"
-  },
+"devDependencies": {
+  "@types/node": "^20.10.0",
+  "builtin-modules": "^3.3.0",
+  "esbuild": "^0.19.9",
+  "obsidian": "latest",
+  "tslib": "^2.6.2",
+  "typescript": "^5.3.3"
+},
   "dependencies": {
     "remark": "^15.0.1",
     "remark-gfm": "^4.0.0",
